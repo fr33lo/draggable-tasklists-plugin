@@ -41,7 +41,7 @@ This plugin is licensed under the MIT License. See the [LICENSE](LICENSE) file f
 
 - fr33lo
 - GitHub: [fr33lo](https://github.com/fr33lo)
-- Website: [yourwebsite.com](https://freelo.world)
+- Website: [freelo.world](https://freelo.world)
 
 ---
 
