@@ -1,0 +1,11 @@
+/* Add your custom CSS styles here */
+ul.task-list {
+  border: 2px dashed #333;
+  padding: 10px;
+  margin: 10px 0;
+  cursor: grab;
+}
+
+ul.task-list.dragging {
+  border: 2px dashed #777;
+}
