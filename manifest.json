@@ -3,7 +3,7 @@
   "name": "Draggable Tasklists",
   "version": "0.1.1",
   "description": "Make tasklists in Obsidian draggable.",
-  "author": "Your Name",
+  "author": "fr33lo",
   "repository": "https://github.com/yourusername/your-repo",
   "main": "main.js",
   "style": "styles.css",
