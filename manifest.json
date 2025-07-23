@@ -1,14 +1,12 @@
 {
   "id": "draggable-tasklists",
   "name": "Draggable Tasklists",
-  "version": "0.1.1",
-  "description": "Make tasklists in Obsidian draggable.",
+  "version": "0.1.2",
+  "minAppVersion": "0.15.0",
+  "description": "Make tasklists in Obsidian draggable for easy reordering in preview mode.",
   "author": "fr33lo",
-  "repository": "https://github.com/yourusername/your-repo",
-  "main": "main.js",
-  "style": "styles.css",
-  "license": "MIT",
-  "dependencies": {
-    "obsidian": "0.15.0"
-  }
+  "authorUrl": "https://freelo.world",
+  "fundingUrl": "https://github.com/fr33lo/draggable-tasklists-plugin",
+  "isDesktopOnly": false,
+  "main": "main.js"
 }
