@@ -1,13 +1,24 @@
-// settings.js
 import { App, PluginSettingTab, Setting } from 'obsidian';
+import DraggableTasklistPlugin from './main';
+
+export interface DraggableTasklistSettings {
+    enableInPreviewMode: boolean;
+    saveOrderAutomatically: boolean;
+    dragHandleStyle: string;
+    customDragHandleClass: string;
+    animationSpeed: number;
+    indentationMarker: boolean;
+}
 
 export class DraggableTasklistSettingTab extends PluginSettingTab {
-    constructor(app, plugin) {
+    plugin: DraggableTasklistPlugin;
+
+    constructor(app: App, plugin: DraggableTasklistPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
 
-    display() {
+    display(): void {
         const { containerEl } = this;
         containerEl.empty();
 
@@ -40,7 +51,7 @@ export class DraggableTasklistSettingTab extends PluginSettingTab {
             .addDropdown(dropdown => dropdown
                 .addOption('grab', 'Grab')
                 .addOption('move', 'Move')
-                .addOption('custom', 'Custom CSS Class')
+                .addOption('pointer', 'Pointer')
                 .setValue(this.plugin.settings.dragHandleStyle)
                 .onChange(async (value) => {
                     this.plugin.settings.dragHandleStyle = value;
@@ -48,19 +59,17 @@ export class DraggableTasklistSettingTab extends PluginSettingTab {
                     this.plugin.registerStyles();
                 }));
 
-        // Only show custom CSS class setting if 'custom' is selected
-        if (this.plugin.settings.dragHandleStyle === 'custom') {
-            new Setting(containerEl)
-                .setName('Custom Drag Handle Class')
-                .setDesc('Enter a custom CSS class for the drag handle')
-                .addText(text => text
-                    .setValue(this.plugin.settings.customDragHandleClass)
-                    .onChange(async (value) => {
-                        this.plugin.settings.customDragHandleClass = value;
-                        await this.plugin.saveSettings();
-                        this.plugin.registerStyles();
-                    }));
-        }
+        new Setting(containerEl)
+            .setName('Custom Drag Handle Class')
+            .setDesc('Enter a custom CSS class for the drag handle (optional)')
+            .addText(text => text
+                .setPlaceholder('custom-drag-handle')
+                .setValue(this.plugin.settings.customDragHandleClass)
+                .onChange(async (value) => {
+                    this.plugin.settings.customDragHandleClass = value;
+                    await this.plugin.saveSettings();
+                    this.plugin.registerStyles();
+                }));
 
         new Setting(containerEl)
             .setName('Animation Speed')
@@ -83,8 +92,22 @@ export class DraggableTasklistSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.indentationMarker = value;
                     await this.plugin.saveSettings();
+                    this.plugin.registerStyles();
                     this.plugin.initializeDraggableTasks();
                 }));
+
+        // Add section for usage instructions
+        containerEl.createEl('h3', { text: 'Usage' });
+        const usageEl = containerEl.createEl('div');
+        usageEl.innerHTML = `
+            <p>To use the draggable tasklists:</p>
+            <ol>
+                <li>Create a task list in your note using the standard Markdown syntax: <code>- [ ] Task item</code></li>
+                <li>In preview mode, hover over a task to see the drag handle (⋮⋮)</li>
+                <li>Drag and drop tasks to reorder them</li>
+                <li>Use the command "Toggle Draggable Tasklists" to enable/disable in the current note</li>
+            </ol>
+        `;
 
         // Add a button to reset settings
         new Setting(containerEl)
@@ -92,6 +115,7 @@ export class DraggableTasklistSettingTab extends PluginSettingTab {
             .setDesc('Restore default settings')
             .addButton(button => button
                 .setButtonText('Reset')
+                .setWarning()
                 .onClick(async () => {
                     this.plugin.settings = {
                         enableInPreviewMode: true,
