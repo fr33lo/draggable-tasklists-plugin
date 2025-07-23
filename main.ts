@@ -1,16 +1,25 @@
-// main.ts
 import { Plugin, MarkdownView, Notice } from 'obsidian';
-import { DraggableTasklistSettingTab } from './settings';
+import { DraggableTasklistSettingTab, DraggableTasklistSettings } from './settings';
+
+interface DragData {
+    sourceElement: HTMLElement;
+    sourceIndex: number;
+    sourceParent: HTMLElement;
+}
 
 export default class DraggableTasklistPlugin extends Plugin {
-    settings = {
+    settings: DraggableTasklistSettings = {
         enableInPreviewMode: true,
         saveOrderAutomatically: true,
-        dragHandleStyle: 'grab', // grab, move, custom
+        dragHandleStyle: 'grab',
         customDragHandleClass: '',
         animationSpeed: 200,
         indentationMarker: true,
-    }
+    };
+
+    private styleEl: HTMLStyleElement | null = null;
+    private dragData: DragData | null = null;
+    private eventListeners: Map<HTMLElement, Array<{event: string, handler: EventListener}>> = new Map();
 
     async onload() {
         console.log('Loading Draggable Tasklist plugin');
@@ -24,8 +33,14 @@ export default class DraggableTasklistPlugin extends Plugin {
         // Register CSS styles
         this.registerStyles();
 
+        // Register markdown post processor
+        this.registerMarkdownPostProcessor((el, ctx) => {
+            if (this.settings.enableInPreviewMode) {
+                this.processTasks(el);
+            }
+        });
+
         // Register events
-        this.registerMarkdownPostProcessor();
         this.registerEvents();
 
         // Add command to toggle draggable mode
@@ -35,14 +50,15 @@ export default class DraggableTasklistPlugin extends Plugin {
             callback: () => this.toggleDraggable(),
         });
 
-        // Show welcome notice
         new Notice('Draggable Tasklists plugin loaded');
     }
 
     onunload() {
         console.log('Unloading Draggable Tasklist plugin');
-        // Clean up any event listeners or DOM modifications
         this.cleanupDraggables();
+        if (this.styleEl) {
+            this.styleEl.remove();
+        }
     }
 
     async loadSettings() {
@@ -54,265 +70,299 @@ export default class DraggableTasklistPlugin extends Plugin {
     }
 
     registerStyles() {
-        // Add the required CSS to the document
-        document.head.appendChild(
-            createStyleElement(`
-                .task-list-item.draggable {
-                    cursor: ${this.settings.dragHandleStyle};
-                    position: relative;
-                    padding-left: 5px;
-                    transition: background-color 0.2s ease;
-                }
-                
-                .task-list-item.draggable:hover {
-                    background-color: var(--background-secondary);
-                }
-                
-                .task-list-item.dragging {
-                    opacity: 0.5;
-                    background-color: var(--interactive-accent);
-                }
-                
-                .task-list-item .drag-handle {
-                    display: none;
-                    position: absolute;
-                    left: -20px;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    color: var(--text-muted);
-                }
-                
-                .task-list-item.draggable:hover .drag-handle {
-                    display: inline-block;
-                }
-                
-                .task-list-item.draggable.indentation-marker {
-                    border-left: 2px solid var(--interactive-accent-hover);
-                }
-            `)
-        );
-    }
+        // Remove existing styles if they exist
+        if (this.styleEl) {
+            this.styleEl.remove();
+        }
 
-    registerMarkdownPostProcessor() {
-        // Process markdown to inject the draggable functionality
-        this.registerMarkdownPostProcessor((el, ctx) => {
-            // Only process in preview mode if enabled
-            if (!this.settings.enableInPreviewMode && ctx.frontmatter?.draggable !== true) {
-                return;
+        // Create new style element
+        this.styleEl = document.createElement('style');
+        this.styleEl.textContent = `
+            .task-list-item.draggable-task {
+                cursor: ${this.settings.dragHandleStyle};
+                position: relative;
+                padding-left: 25px;
+                transition: all ${this.settings.animationSpeed}ms ease;
+                border-radius: 4px;
             }
-
-            const taskListItems = el.querySelectorAll('.task-list-item');
-
-            if (taskListItems.length === 0) {
-                return;
+            
+            .task-list-item.draggable-task:hover {
+                background-color: var(--background-modifier-hover);
             }
-
-            // Add draggable functionality to each task list item
-            taskListItems.forEach((item, index) => {
-                this.makeTaskItemDraggable(item, index);
-            });
-        });
+            
+            .task-list-item.draggable-task.dragging {
+                opacity: 0.5;
+                background-color: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+            
+            .task-list-item.draggable-task .drag-handle {
+                position: absolute;
+                left: 2px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: var(--text-muted);
+                cursor: grab;
+                user-select: none;
+                opacity: 0;
+                transition: opacity 0.2s ease;
+                font-size: 12px;
+                line-height: 1;
+            }
+            
+            .task-list-item.draggable-task:hover .drag-handle {
+                opacity: 1;
+            }
+            
+            .task-list-item.draggable-task.drag-over {
+                border: 2px solid var(--interactive-accent);
+                background-color: var(--background-modifier-border);
+            }
+            
+            ${this.settings.indentationMarker ? `
+            .task-list-item.draggable-task.indentation-marker::before {
+                content: '';
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background-color: var(--interactive-accent-hover);
+            }
+            ` : ''}
+        `;
+        
+        document.head.appendChild(this.styleEl);
     }
 
     registerEvents() {
-        // Watch for changes to the active leaf
         this.registerEvent(
             this.app.workspace.on('active-leaf-change', () => {
-                // Re-initialize draggable tasks when the active leaf changes
-                this.initializeDraggableTasks();
+                setTimeout(() => this.initializeDraggableTasks(), 100);
             })
         );
 
-        // Watch for layout changes
         this.registerEvent(
             this.app.workspace.on('layout-change', () => {
-                // Re-initialize when layout changes
-                this.initializeDraggableTasks();
+                setTimeout(() => this.initializeDraggableTasks(), 100);
             })
         );
     }
 
-    makeTaskItemDraggable(item, index) {
-        // Add draggable class and drag handle
-        item.addClass('draggable');
+    processTasks(el: HTMLElement) {
+        const taskListItems = el.querySelectorAll('.task-list-item');
+        taskListItems.forEach((item, index) => {
+            this.makeTaskItemDraggable(item as HTMLElement, index);
+        });
+    }
+
+    makeTaskItemDraggable(item: HTMLElement, index: number) {
+        // Skip if already made draggable
+        if (item.classList.contains('draggable-task')) {
+            return;
+        }
+
+        item.classList.add('draggable-task');
         
         if (this.settings.indentationMarker) {
-            item.addClass('indentation-marker');
+            item.classList.add('indentation-marker');
         }
         
-        // Create the drag handle icon
+        // Create the drag handle
         const dragHandle = document.createElement('span');
-        dragHandle.className = 'drag-handle ' + this.settings.customDragHandleClass;
-        dragHandle.innerHTML = '⋮⋮'; // Simple drag handle icon
-        item.prepend(dragHandle);
+        dragHandle.className = 'drag-handle';
+        if (this.settings.customDragHandleClass) {
+            dragHandle.classList.add(this.settings.customDragHandleClass);
+        }
+        dragHandle.innerHTML = '⋮⋮';
+        item.insertBefore(dragHandle, item.firstChild);
         
-        // Set data attributes for tracking
-        item.setAttribute('data-index', index);
-        
-        // Add the draggable attribute
+        // Set attributes
+        item.setAttribute('data-task-index', index.toString());
         item.setAttribute('draggable', 'true');
         
-        // Add drag events
-        item.addEventListener('dragstart', (e) => this.handleDragStart(e));
-        item.addEventListener('dragend', (e) => this.handleDragEnd(e));
-        item.addEventListener('dragover', (e) => this.handleDragOver(e));
-        item.addEventListener('dragenter', (e) => this.handleDragEnter(e));
-        item.addEventListener('dragleave', (e) => this.handleDragLeave(e));
-        item.addEventListener('drop', (e) => this.handleDrop(e));
+        // Add event listeners
+        const listeners = [
+            {event: 'dragstart', handler: this.handleDragStart.bind(this)},
+            {event: 'dragend', handler: this.handleDragEnd.bind(this)},
+            {event: 'dragover', handler: this.handleDragOver.bind(this)},
+            {event: 'dragenter', handler: this.handleDragEnter.bind(this)},
+            {event: 'dragleave', handler: this.handleDragLeave.bind(this)},
+            {event: 'drop', handler: this.handleDrop.bind(this)}
+        ];
+
+        listeners.forEach(({event, handler}) => {
+            item.addEventListener(event, handler);
+        });
+
+        this.eventListeners.set(item, listeners);
     }
 
-    handleDragStart(e) {
-        const target = e.target.closest('.task-list-item');
-        target.addClass('dragging');
-        e.dataTransfer.setData('text/plain', target.getAttribute('data-index'));
-        
-        // For better visual feedback
-        e.dataTransfer.effectAllowed = 'move';
-    }
-
-    handleDragEnd(e) {
-        const target = e.target.closest('.task-list-item');
-        target.removeClass('dragging');
-    }
-
-    handleDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    }
-
-    handleDragEnter(e) {
-        const target = e.target.closest('.task-list-item');
-        if (target && !target.hasClass('dragging')) {
-            target.addClass('drag-over');
-        }
-    }
-
-    handleDragLeave(e) {
-        const target = e.target.closest('.task-list-item');
-        if (target) {
-            target.removeClass('drag-over');
-        }
-    }
-
-    async handleDrop(e) {
-        e.preventDefault();
-        const target = e.target.closest('.task-list-item');
-        
+    handleDragStart(e: DragEvent) {
+        const target = (e.target as HTMLElement).closest('.task-list-item') as HTMLElement;
         if (!target) return;
+
+        target.classList.add('dragging');
         
-        target.removeClass('drag-over');
+        const index = parseInt(target.getAttribute('data-task-index') || '0');
+        const parent = target.parentElement;
         
-        const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'));
-        const dropIndex = parseInt(target.getAttribute('data-index'));
+        this.dragData = {
+            sourceElement: target,
+            sourceIndex: index,
+            sourceParent: parent as HTMLElement
+        };
         
-        if (draggedIndex === dropIndex) return;
+        if (e.dataTransfer) {
+            e.dataTransfer.setData('text/plain', index.toString());
+            e.dataTransfer.effectAllowed = 'move';
+        }
+    }
+
+    handleDragEnd(e: DragEvent) {
+        const target = (e.target as HTMLElement).closest('.task-list-item') as HTMLElement;
+        if (target) {
+            target.classList.remove('dragging');
+        }
         
-        // Update the tasks order in the document
-        await this.updateTaskOrder(draggedIndex, dropIndex);
+        // Clean up any drag-over states
+        document.querySelectorAll('.task-list-item.drag-over').forEach(item => {
+            item.classList.remove('drag-over');
+        });
+        
+        this.dragData = null;
+    }
+
+    handleDragOver(e: DragEvent) {
+        e.preventDefault();
+        if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = 'move';
+        }
+    }
+
+    handleDragEnter(e: DragEvent) {
+        const target = (e.target as HTMLElement).closest('.task-list-item') as HTMLElement;
+        if (target && !target.classList.contains('dragging')) {
+            target.classList.add('drag-over');
+        }
+    }
+
+    handleDragLeave(e: DragEvent) {
+        const target = (e.target as HTMLElement).closest('.task-list-item') as HTMLElement;
+        if (target && !this.isChildOfTarget(e.relatedTarget as Node, target)) {
+            target.classList.remove('drag-over');
+        }
+    }
+
+    async handleDrop(e: DragEvent) {
+        e.preventDefault();
+        const target = (e.target as HTMLElement).closest('.task-list-item') as HTMLElement;
+        
+        if (!target || !this.dragData) return;
+        
+        target.classList.remove('drag-over');
+        
+        const dropIndex = parseInt(target.getAttribute('data-task-index') || '0');
+        const dragIndex = this.dragData.sourceIndex;
+        
+        if (dragIndex === dropIndex) return;
+        
+        await this.updateTaskOrder(dragIndex, dropIndex);
         
         // Refresh the view
-        this.initializeDraggableTasks();
+        setTimeout(() => this.initializeDraggableTasks(), 100);
     }
 
-    async updateTaskOrder(fromIndex, toIndex) {
+    isChildOfTarget(node: Node | null, target: HTMLElement): boolean {
+        while (node) {
+            if (node === target) return true;
+            node = node.parentNode;
+        }
+        return false;
+    }
+
+    async updateTaskOrder(fromIndex: number, toIndex: number) {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        
         if (!view) return;
 
         const editor = view.editor;
-        const doc = editor.getValue();
+        const content = editor.getValue();
+        const lines = content.split('\n');
         
-        // Parse the document to find task list items
-        const lines = doc.split('\n');
-        let taskLines = [];
+        // Find all task lines
+        const taskLines: Array<{lineIndex: number, content: string}> = [];
         
-        // Find all task list lines and their indentation levels
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const taskMatch = line.match(/^(\s*)- \[([ x])\] (.*)/);
-            
-            if (taskMatch) {
-                taskLines.push({
-                    lineNumber: i,
-                    indentation: taskMatch[1].length,
-                    checked: taskMatch[2] === 'x',
-                    text: taskMatch[3],
-                    fullLine: line
-                });
+            if (/^\s*- \[([ x])\]/.test(line)) {
+                taskLines.push({lineIndex: i, content: line});
             }
         }
         
-        // Perform the move operation
+        // Perform the move
         if (fromIndex < taskLines.length && toIndex < taskLines.length) {
-            const itemToMove = taskLines[fromIndex];
+            const movedTask = taskLines[fromIndex];
             taskLines.splice(fromIndex, 1);
-            taskLines.splice(toIndex, 0, itemToMove);
+            taskLines.splice(toIndex, 0, movedTask);
             
-            // Update the document
-            const newLines = [...lines];
+            // Update the original lines array
+            taskLines.forEach((task, newIndex) => {
+                const originalIndex = newIndex < taskLines.length - 1 ? 
+                    taskLines.findIndex(t => t.lineIndex === task.lineIndex) : newIndex;
+                if (originalIndex !== -1 && originalIndex < taskLines.length) {
+                    lines[taskLines[originalIndex].lineIndex] = task.content;
+                }
+            });
             
-            for (let i = 0; i < taskLines.length; i++) {
-                const task = taskLines[i];
-                const indentation = " ".repeat(task.indentation);
-                const checkbox = task.checked ? 'x' : ' ';
-                newLines[task.lineNumber] = `${indentation}- [${checkbox}] ${task.text}`;
-            }
+            const newContent = lines.join('\n');
+            editor.setValue(newContent);
             
-            const newDoc = newLines.join('\n');
-            editor.setValue(newDoc);
-            
-            if (this.settings.saveOrderAutomatically) {
-                await this.app.vault.modify(view.file, newDoc);
+            if (this.settings.saveOrderAutomatically && view.file) {
+                await this.app.vault.modify(view.file, newContent);
                 new Notice('Task order updated');
             }
         }
     }
 
     initializeDraggableTasks() {
-        // Initialize draggable tasklists in the active view
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        
         if (!view) return;
         
-        // Clean up existing draggables first
         this.cleanupDraggables();
         
-        // Get all task list items in the current view
         const taskItems = view.containerEl.querySelectorAll('.task-list-item');
-        
-        // Make each task item draggable
         taskItems.forEach((item, index) => {
-            this.makeTaskItemDraggable(item, index);
+            this.makeTaskItemDraggable(item as HTMLElement, index);
         });
     }
 
     cleanupDraggables() {
-        // Remove draggable functionality from all task items
-        document.querySelectorAll('.task-list-item.draggable').forEach(item => {
-            item.removeClass('draggable');
-            item.removeClass('indentation-marker');
+        // Clean up event listeners
+        this.eventListeners.forEach((listeners, element) => {
+            listeners.forEach(({event, handler}) => {
+                element.removeEventListener(event, handler);
+            });
+            
+            // Remove classes and attributes
+            element.classList.remove('draggable-task', 'indentation-marker', 'dragging', 'drag-over');
+            element.removeAttribute('draggable');
+            element.removeAttribute('data-task-index');
             
             // Remove drag handle
-            const dragHandle = item.querySelector('.drag-handle');
+            const dragHandle = element.querySelector('.drag-handle');
             if (dragHandle) {
                 dragHandle.remove();
             }
-            
-            // Remove event listeners
-            // Note: This is a simplified version, in a real plugin you'd want to 
-            // properly clean up all event listeners
-            item.removeAttribute('draggable');
-            item.removeAttribute('data-index');
         });
+        
+        this.eventListeners.clear();
     }
 
     toggleDraggable() {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-        
         if (!view) return;
         
-        // Check if draggable is already enabled
-        const hasDraggable = view.containerEl.querySelector('.task-list-item.draggable');
+        const hasDraggable = view.containerEl.querySelector('.task-list-item.draggable-task');
         
         if (hasDraggable) {
             this.cleanupDraggables();
@@ -322,12 +372,4 @@ export default class DraggableTasklistPlugin extends Plugin {
             new Notice('Draggable tasklists enabled');
         }
     }
-}
-
-// Helper function to create a style element
-function createStyleElement(css) {
-    const el = document.createElement('style');
-    el.type = 'text/css';
-    el.textContent = css;
-    return el;
 }
