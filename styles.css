@@ -1,11 +1,109 @@
-/* Add your custom CSS styles here */
-ul.task-list {
-  border: 2px dashed #333;
-  padding: 10px;
-  margin: 10px 0;
-  cursor: grab;
+/* Draggable Tasklists Plugin Styles */
+
+/* Base styles for draggable task items */
+.task-list-item.draggable-task {
+    position: relative;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    margin: 2px 0;
 }
 
-ul.task-list.dragging {
-  border: 2px dashed #777;
+/* Enhanced drag handle visibility */
+.task-list-item.draggable-task .drag-handle {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    cursor: grab;
+    user-select: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    font-size: 12px;
+    line-height: 1;
+    z-index: 10;
+}
+
+.task-list-item.draggable-task:hover .drag-handle {
+    opacity: 0.7;
+}
+
+.task-list-item.draggable-task .drag-handle:hover {
+    opacity: 1;
+    color: var(--text-normal);
+}
+
+/* Dragging state */
+.task-list-item.draggable-task.dragging {
+    opacity: 0.6;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    transform: rotate(2deg);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Drop target indication */
+.task-list-item.draggable-task.drag-over {
+    border: 2px dashed var(--interactive-accent);
+    background-color: var(--background-modifier-border);
+    transform: scale(1.02);
+}
+
+/* Hover effects */
+.task-list-item.draggable-task:hover {
+    background-color: var(--background-modifier-hover);
+}
+
+/* Indentation marker */
+.task-list-item.draggable-task.indentation-marker::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 2px;
+    background-color: var(--interactive-accent-hover);
+    border-radius: 1px;
+}
+
+/* Task list container improvements */
+.markdown-preview-view .task-list-item.draggable-task,
+.markdown-rendered .task-list-item.draggable-task {
+    padding-left: 25px;
+    min-height: 24px;
+    display: flex;
+    align-items: center;
+}
+
+/* Ensure proper spacing for nested lists */
+.task-list-item.draggable-task ul.task-list,
+.task-list-item.draggable-task ol.task-list {
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
+/* Dark theme adjustments */
+.theme-dark .task-list-item.draggable-task.dragging {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Focus and accessibility */
+.task-list-item.draggable-task:focus {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+/* Animation for smooth transitions */
+.task-list-item.draggable-task {
+    transition: 
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+/* Prevent text selection during drag */
+.task-list-item.draggable-task.dragging * {
+    user-select: none;
+    pointer-events: none;
 }
